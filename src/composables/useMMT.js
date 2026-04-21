@@ -73,6 +73,62 @@ export function useMMT() {
         }
     }
 
+    // Apply an OME placement response to our local state. Returns
+    // { filled, rested } in the same units as order.quantity.
+    //
+    // OME response semantics:
+    //   • completed === [] && partial === null → order rested fully, no match
+    //   • order_id in completed → that order is fully done (removed from book);
+    //     completed[i].quantity is the matched size for that order
+    //   • partial.order_id present → that order was partially matched;
+    //     partial.quantity is the MATCHED amount for that fill
+    function applyPlaceResponse(order, resp) {
+        store.stats.placed++
+
+        const completedList = resp?.completed ?? []
+        const partial = resp?.partial ?? null
+
+        // Anything in `completed` is fully done — drop each from the active
+        // list. Covers our own id (if our order filled fully) and any resting
+        // maker orders we consumed that were still tracked here.
+        for (const m of completedList) {
+            store.removeActiveOrder(m.order_id)
+        }
+
+        const placedQty = parseFloat(order.quantity)
+        const myCompleted = completedList.find(m => m.order_id === order.id)
+        const myPartial = partial && partial.order_id === order.id ? partial : null
+
+        let filledQty = 0
+        let restedQty = placedQty
+
+        if (myCompleted) {
+            filledQty = parseFloat(myCompleted.quantity)
+            restedQty = 0
+        } else if (myPartial) {
+            filledQty = parseFloat(myPartial.quantity)
+            restedQty = placedQty - filledQty
+        }
+
+        // Only record the taker side (our order) in Live Trades. Every trade
+        // has a maker + a taker on the same print; showing both double-counts.
+        if (filledQty > 1e-8) {
+            store.addMatched([{
+                order_id: order.id,
+                side: order.side,
+                price: order.price,
+                quantity: filledQty.toFixed(4),
+                matched_at: Date.now(),
+            }])
+        }
+
+        if (restedQty > 1e-8) {
+            store.addActiveOrder({...order, quantity: restedQty.toFixed(4)})
+        }
+
+        return {filled: filledQty, rested: restedQty}
+    }
+
     async function placeSingle(order) {
         let resp
         try {
@@ -84,61 +140,12 @@ export function useMMT() {
                 price: order.price,
             })
         } catch {
-            return // order rejected or network error
-        }
-        store.stats.placed++
-
-        // OME response semantics:
-        //   • completed === [] && partial === null → order rested fully, no match
-        //   • order_id in completed → that order is fully done (removed from book)
-        //   • partial.order_id present → that order is partially done; its new
-        //     resting quantity is partial.quantity
-        const completedList = resp.completed ?? []
-        const partial = resp.partial ?? null
-
-        // Anything in `completed` is fully done — drop each from the active
-        // list. Covers our own id (if our order filled fully) and any resting
-        // maker orders we consumed that were still tracked here.
-        for (const m of completedList) {
-            store.removeActiveOrder(m.order_id)
+            return // MMT loop swallows errors so one rejection doesn't kill the batch
         }
 
-        // Any matches against other orders on the book — record those as taker
-        // trades from our order's perspective.
-        const placedQty = parseFloat(order.quantity)
-        const myCompleted = completedList.find(m => m.order_id === order.id)
-        const myPartial = partial && partial.order_id === order.id ? partial : null
+        const {rested} = applyPlaceResponse(order, resp)
 
-        let filledQty = 0
-        let restedQty = placedQty
-
-        if (myCompleted) {
-            // Our order is fully done — nothing rests.
-            filledQty = placedQty
-            restedQty = 0
-        } else if (myPartial) {
-            // Our order is partially done — remaining rest size is in partial.
-            restedQty = parseFloat(myPartial.quantity)
-            filledQty = placedQty - restedQty
-        }
-        // else: completed may list other orders that got fully consumed by ours;
-        // treat our remainder as whatever isn't accounted for.
-
-        if (filledQty > 1e-8) {
-            store.addMatched([{
-                order_id: order.id,
-                side: order.side,
-                price: order.price,
-                quantity: filledQty.toFixed(4),
-                matched_at: Date.now(),
-            }])
-        }
-
-        if (restedQty <= 1e-8) return // fully filled
-
-        store.addActiveOrder({...order, quantity: restedQty.toFixed(4)})
-
-        if (order.aggressive) {
+        if (order.aggressive && rested > 1e-8) {
             // Aggressive remainder would rest on the wrong side of mid
             // (inverted quote). Cancel it and wait for OME success before
             // untracking — so it never lingers in the book silently.
@@ -233,6 +240,29 @@ export function useMMT() {
         await store.cancelAllActive()
     }
 
+    // Manual order placement — same bookkeeping as MMT ticks (stats, active
+    // orders, match recording) but errors propagate so the UI can surface
+    // the OME rejection instead of silently succeeding.
+    async function placeManual({side, price, quantity}) {
+        const order = {
+            id: nextId(),
+            userId: Math.floor(randomBetween(1, 1_000_000)),
+            side,
+            price: String(price),
+            quantity: String(quantity),
+            aggressive: false,
+        }
+        const resp = await api.placeLimitOrder({
+            order_id: order.id,
+            user_id: order.userId,
+            side: order.side,
+            quantity: order.quantity,
+            price: order.price,
+        })
+        const {filled, rested} = applyPlaceResponse(order, resp)
+        return {id: order.id, filled, rested}
+    }
+
     async function resetAll() {
         await stop()
         store.clearActiveOrders()
@@ -263,5 +293,6 @@ export function useMMT() {
         flood,
         cancelAll,
         resetAll,
+        placeManual,
     }
 }
