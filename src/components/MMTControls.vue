@@ -189,7 +189,7 @@ const aggressionLabel = computed(() => {
 })
 
 const displayMid = computed(() => {
-  const m = parseFloat(store.midPrice) || mmt.userMidPrice.value
+  const m = parseFloat(store.midPrice) || mmt.effectiveMid.value
   return m.toFixed(2)
 })
 

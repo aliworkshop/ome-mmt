@@ -1,6 +1,7 @@
 <template>
-  <div class="card bg-panel h-100 d-flex flex-column overflow-hidden">
-    <div class="panel-header">
+  <div
+      :class="embedded ? 'h-100 d-flex flex-column overflow-hidden' : 'card bg-panel h-100 d-flex flex-column overflow-hidden'">
+    <div v-if="!embedded" class="panel-header">
       <span class="micro-label text-info-emphasis">
         <i class="bi bi-list-check me-1"></i>ACTIVE ORDERS
       </span>
@@ -50,6 +51,10 @@
 import {ref, onMounted, onUnmounted} from 'vue'
 import {api} from '../api/client.js'
 import {useTradingStore} from '../stores/trading.js'
+
+defineProps({
+  embedded: {type: Boolean, default: false},
+})
 
 const store = useTradingStore()
 

@@ -1,6 +1,7 @@
 <template>
-  <div class="card bg-panel h-100 d-flex flex-column overflow-hidden">
-    <div class="panel-header">
+  <div
+      :class="embedded ? 'h-100 d-flex flex-column overflow-hidden' : 'card bg-panel h-100 d-flex flex-column overflow-hidden'">
+    <div v-if="!embedded" class="panel-header">
       <div class="d-flex align-items-center gap-2">
         <span class="micro-label text-info-emphasis">
           <i class="bi bi-activity me-1"></i>LIVE TRADES
@@ -58,6 +59,10 @@
 <script setup>
 import {computed} from 'vue'
 import {useTradingStore} from '../stores/trading.js'
+
+defineProps({
+  embedded: {type: Boolean, default: false},
+})
 
 const store = useTradingStore()
 

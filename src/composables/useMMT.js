@@ -19,23 +19,17 @@ export function useMMT() {
 
     const isRunning = ref(false)
     const speed = ref(1)          // orders per second
-    const userMidPrice = ref(50000)
     const spreadPct = ref(0.3)    // % spread half-width
     const batchSize = ref(2)      // orders per tick
     const autoCancel = ref(true)  // auto-cancel old orders
     const cancelAfterMs = ref(20000) // cancel orders older than N ms
-    const aggressionPct = ref(20) // 0 = fully passive (no matches), 100 = all aggressive
+    const aggressionPct = ref(20) // 0 = fully passive, 100 = all at inner edge
 
-    // Keep userMidPrice in sync with Binance live price
-    watch(binance.price, (p) => {
-        if (p > 0) userMidPrice.value = p
-    })
-
-    // Always anchor new orders to the Binance reference price so the book
-    // tracks the external market. Fall back to the OME book mid only if
-    // Binance is disconnected.
+    // Mid is driven directly by the live Binance price. The OME book mid is
+    // only a fallback when Binance is disconnected — otherwise every batch
+    // re-reads the latest Binance tick, so orders track the external market.
     const effectiveMid = computed(() => {
-        if (userMidPrice.value > 0) return userMidPrice.value
+        if (binance.price.value > 0) return binance.price.value
         const liveMid = parseFloat(store.midPrice)
         return liveMid > 0 ? liveMid : 0
     })
@@ -51,6 +45,7 @@ export function useMMT() {
     // the opposite side and match immediately.
     function generateOrder(side) {
         const mid = effectiveMid.value
+        if (!(mid > 0)) return null
         const halfSpread = mid * (spreadPct.value / 100) / 2
         const aggressive = Math.random() * 100 < aggressionPct.value
 
@@ -130,7 +125,8 @@ export function useMMT() {
         const half = Math.max(1, Math.floor(batchSize.value / 2))
         const buys = Array.from({length: half}, () => generateOrder('buy'))
         const sells = Array.from({length: batchSize.value - half}, () => generateOrder('sell'))
-        const all = [...buys, ...sells]
+        const all = [...buys, ...sells].filter(Boolean)
+        if (!all.length) return
 
         // Fire all concurrently
         await Promise.allSettled(all.map(placeSingle))
@@ -139,21 +135,9 @@ export function useMMT() {
     async function cancelOld() {
         if (!autoCancel.value) return
         const cutoff = Date.now() - cancelAfterMs.value
-        const mid = effectiveMid.value
         const toCancel = []
         for (const [id, o] of mmtOrders.entries()) {
-            if (o.placedAt < cutoff) {
-                toCancel.push(id)
-                continue
-            }
-            // Sweep inverted quotes: a buy resting above mid or a sell
-            // resting below mid means the reference price has drifted past
-            // the order. Cancel so it does not cross the book the wrong way.
-            if (mid > 0) {
-                const p = parseFloat(o.price)
-                if (o.side === 'buy' && p > mid) toCancel.push(id)
-                else if (o.side === 'sell' && p < mid) toCancel.push(id)
-            }
+            if (o.placedAt < cutoff) toCancel.push(id)
         }
         await Promise.allSettled(
             toCancel.map(async (id) => {
@@ -225,7 +209,8 @@ export function useMMT() {
         const orders = [
             ...Array.from({length: half}, () => generateOrder('buy')),
             ...Array.from({length: count - half}, () => generateOrder('sell')),
-        ]
+        ].filter(Boolean)
+        if (!orders.length) return
         await Promise.allSettled(orders.map(placeSingle))
     }
 
@@ -262,7 +247,6 @@ export function useMMT() {
     return {
         isRunning,
         speed,
-        userMidPrice,
         spreadPct,
         batchSize,
         autoCancel,

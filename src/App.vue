@@ -67,7 +67,7 @@
       </main>
 
       <aside class="sidebar sidebar-right p-3 ps-0">
-        <LiveMatches/>
+        <RightPanel/>
       </aside>
     </div>
   </div>
@@ -79,7 +79,7 @@ import {useTradingStore} from './stores/trading.js'
 import TradingSlide from './components/TradingSlide.vue'
 import MatchedSlide from './components/MatchedSlide.vue'
 import OrderBook from './components/OrderBook.vue'
-import LiveMatches from './components/LiveMatches.vue'
+import RightPanel from './components/RightPanel.vue'
 
 const store = useTradingStore()
 const slide = ref(0)
