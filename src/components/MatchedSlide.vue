@@ -1,73 +1,89 @@
 <template>
-  <div class="matched-slide">
-    <!-- Header Stats -->
-    <div class="ms-stats-bar">
-      <div class="ms-stat">
-        <span class="ms-stat-val">{{ store.matchedOrders.length }}</span>
-        <span class="ms-stat-label">TOTAL TRADES</span>
+  <div class="d-flex flex-column h-100 p-3 gap-3">
+    <!-- Stat cards -->
+    <div class="row g-2">
+      <div class="col">
+        <div class="stat-card">
+          <span class="mono fw-bold fs-4 text-light">{{ store.matchedOrders.length }}</span>
+          <span class="micro-label">TOTAL TRADES</span>
+        </div>
       </div>
-      <div class="ms-stat">
-        <span class="ms-stat-val buy">{{ buyCount }}</span>
-        <span class="ms-stat-label">BUY SIDE</span>
+      <div class="col">
+        <div class="stat-card">
+          <span class="mono fw-bold fs-4 text-buy">{{ buyCount }}</span>
+          <span class="micro-label">BUY SIDE</span>
+        </div>
       </div>
-      <div class="ms-stat">
-        <span class="ms-stat-val sell">{{ sellCount }}</span>
-        <span class="ms-stat-label">SELL SIDE</span>
+      <div class="col">
+        <div class="stat-card">
+          <span class="mono fw-bold fs-4 text-sell">{{ sellCount }}</span>
+          <span class="micro-label">SELL SIDE</span>
+        </div>
       </div>
-      <div class="ms-stat">
-        <span class="ms-stat-val vol">{{ fmtVolume(store.stats.volume) }}</span>
-        <span class="ms-stat-label">TOTAL VOLUME</span>
+      <div class="col">
+        <div class="stat-card">
+          <span class="mono fw-bold fs-4 text-purple">{{ fmtVolume(store.stats.volume) }}</span>
+          <span class="micro-label">TOTAL VOLUME</span>
+        </div>
       </div>
-      <div class="ms-stat">
-        <span class="ms-stat-val gold">{{ avgPrice }}</span>
-        <span class="ms-stat-label">AVG PRICE</span>
+      <div class="col">
+        <div class="stat-card">
+          <span class="mono fw-bold fs-4 text-gold">{{ avgPrice }}</span>
+          <span class="micro-label">AVG PRICE</span>
+        </div>
       </div>
-      <div class="ms-stat">
-        <span class="ms-stat-val">{{ store.stats.placed }}</span>
-        <span class="ms-stat-label">ORDERS PLACED</span>
+      <div class="col">
+        <div class="stat-card">
+          <span class="mono fw-bold fs-4 text-light">{{ store.stats.placed }}</span>
+          <span class="micro-label">ORDERS PLACED</span>
+        </div>
       </div>
     </div>
 
     <!-- Table -->
-    <div class="ms-table-wrap">
-      <table class="ms-table">
-        <thead>
-        <tr>
-          <th>#</th>
-          <th>TIME</th>
-          <th>ORDER ID</th>
-          <th>SIDE</th>
-          <th>PRICE</th>
-          <th>QTY</th>
-          <th>VALUE (USDT)</th>
-        </tr>
-        </thead>
-        <tbody>
-        <TransitionGroup name="match" tag="tbody">
-          <tr
-              v-for="(order, idx) in sortedMatches"
-              :key="order.id + order.matched_at"
-              :class="[order.side, { 'is-new': order.new }]"
-          >
-            <td class="td-num">{{ store.matchedOrders.length - idx }}</td>
-            <td class="td-time">{{ fmtTime(order.matched_at) }}</td>
-            <td class="td-id">{{ order.id }}</td>
-            <td class="td-side">
-                <span :class="order.side" class="side-chip">
+    <div class="card bg-panel flex-grow-1 overflow-hidden d-flex flex-column">
+      <div class="table-wrap flex-grow-1 overflow-auto">
+        <table class="table table-sm table-dark table-hover mono mb-0 align-middle">
+          <thead class="sticky-top">
+          <tr>
+            <th class="micro-label" scope="col">#</th>
+            <th class="micro-label" scope="col">TIME</th>
+            <th class="micro-label" scope="col">ORDER ID</th>
+            <th class="micro-label" scope="col">SIDE</th>
+            <th class="micro-label" scope="col">PRICE</th>
+            <th class="micro-label" scope="col">QTY</th>
+            <th class="micro-label" scope="col">VALUE (USDT)</th>
+          </tr>
+          </thead>
+          <TransitionGroup name="match" tag="tbody">
+            <tr
+                v-for="(order, idx) in sortedMatches"
+                :key="order.id + order.matched_at"
+                :class="{ 'is-new': order.new }"
+            >
+              <td class="text-secondary small">{{ store.matchedOrders.length - idx }}</td>
+              <td class="text-muted-2 small">{{ fmtTime(order.matched_at) }}</td>
+              <td class="text-info-emphasis small text-truncate" style="max-width: 180px">{{ order.id }}</td>
+              <td>
+                <span :class="order.side === 'buy' ? 'chip chip-buy' : 'chip chip-sell'">
                   {{ order.side?.toUpperCase() }}
                 </span>
-            </td>
-            <td :class="order.side" class="td-price">{{ order.price }}</td>
-            <td class="td-qty">{{ order.quantity }}</td>
-            <td class="td-value">{{ fmtValue(order.price, order.quantity) }}</td>
-          </tr>
-        </TransitionGroup>
-        </tbody>
-      </table>
-      <div v-if="!store.matchedOrders.length" class="no-matches">
-        <div class="no-matches-icon">⚡</div>
-        <div class="no-matches-text">No matched orders yet</div>
-        <div class="no-matches-sub">Start the MMT engine to generate trades</div>
+              </td>
+              <td :class="order.side === 'buy' ? 'text-buy' : 'text-sell'"
+                  class="fw-semibold">
+                {{ order.price }}
+              </td>
+              <td class="text-info-emphasis">{{ order.quantity }}</td>
+              <td class="text-purple">{{ fmtValue(order.price, order.quantity) }}</td>
+            </tr>
+          </TransitionGroup>
+        </table>
+
+        <div v-if="!store.matchedOrders.length" class="empty-state">
+          <i class="bi bi-lightning-charge display-4 text-secondary opacity-50"></i>
+          <div class="mono fw-semibold text-secondary">No matched orders yet</div>
+          <div class="small text-muted-2">Start the MMT engine to generate trades</div>
+        </div>
       </div>
     </div>
   </div>
@@ -116,118 +132,44 @@ function fmtValue(price, qty) {
 </script>
 
 <style scoped>
-.matched-slide {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  padding: 10px;
-  gap: 10px;
-}
-
-/* Stats bar */
-.ms-stats-bar {
-  display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: 8px;
-  flex-shrink: 0;
-}
-
-.ms-stat {
+.stat-card {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 12px 8px;
+  padding: 0.875rem 0.5rem;
   background: #0c1220;
   border: 1px solid #1a2a3a;
-  border-radius: 6px;
-  font-family: 'JetBrains Mono', monospace;
+  border-radius: 0.5rem;
+  line-height: 1.2;
 }
 
-.ms-stat-val {
-  font-size: 22px;
-  font-weight: 700;
-  color: #e2e8f0;
+.table-wrap {
+  min-height: 0;
 }
 
-.ms-stat-val.buy {
-  color: #22c55e;
+.table-dark {
+  --bs-table-bg: transparent;
+  --bs-table-striped-bg: transparent;
+  --bs-table-hover-bg: rgba(255, 255, 255, 0.02);
+  --bs-table-border-color: #0f1a28;
 }
 
-.ms-stat-val.sell {
-  color: #ef4444;
-}
-
-.ms-stat-val.vol {
-  color: #a78bfa;
-}
-
-.ms-stat-val.gold {
-  color: #f59e0b;
-}
-
-.ms-stat-label {
-  font-size: 9px;
-  color: #3a5a7a;
-  font-weight: 600;
-  letter-spacing: 1px;
-  margin-top: 3px;
-}
-
-/* Table */
-.ms-table-wrap {
-  flex: 1;
-  overflow-y: auto;
-  background: #0c1220;
-  border: 1px solid #1a2a3a;
-  border-radius: 6px;
-}
-
-.ms-table-wrap::-webkit-scrollbar {
-  width: 6px;
-}
-
-.ms-table-wrap::-webkit-scrollbar-track {
-  background: #0a0e1a;
-}
-
-.ms-table-wrap::-webkit-scrollbar-thumb {
-  background: #1e3048;
-  border-radius: 3px;
-}
-
-.ms-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-family: 'JetBrains Mono', monospace;
-}
-
-.ms-table thead {
-  position: sticky;
-  top: 0;
+.table-dark thead tr {
   background: #0f1a28;
-  z-index: 10;
 }
 
-.ms-table thead th {
-  padding: 10px 12px;
-  font-size: 9px;
-  font-weight: 700;
-  color: #3a5a7a;
-  letter-spacing: 1.2px;
-  text-align: left;
-  border-bottom: 1px solid #1a2a3a;
+.table-dark thead th {
+  border-bottom: 1px solid #1a2a3a !important;
+  font-size: 0.625rem;
+  padding: 0.625rem 0.75rem;
 }
 
-.ms-table tbody tr {
-  border-bottom: 1px solid #0f1a28;
-  transition: background 0.15s;
+.table-dark tbody td {
+  font-size: 0.75rem;
+  padding: 0.4rem 0.75rem;
 }
 
-.ms-table tbody tr:hover {
-  background: rgba(255, 255, 255, 0.02);
-}
-
-.ms-table tbody tr.is-new {
+tr.is-new {
   animation: flashMatch 1s ease-out;
 }
 
@@ -240,102 +182,15 @@ function fmtValue(price, qty) {
   }
 }
 
-.ms-table td {
-  padding: 6px 12px;
-  font-size: 11px;
-}
-
-.td-num {
-  color: #3a5a7a;
-  font-size: 10px;
-}
-
-.td-time {
-  color: #4a6a8a;
-  font-size: 10px;
-}
-
-.td-id {
-  color: #7aa2c8;
-  font-size: 10px;
-  max-width: 160px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.side-chip {
-  display: inline-block;
-  padding: 1px 8px;
-  border-radius: 3px;
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-}
-
-.side-chip.buy {
-  background: #0a2a14;
-  color: #22c55e;
-  border: 1px solid #22c55e55;
-}
-
-.side-chip.sell {
-  background: #2a0a0a;
-  color: #ef4444;
-  border: 1px solid #ef444455;
-}
-
-.td-price {
-  font-weight: 600;
-  font-size: 12px;
-}
-
-.td-price.buy {
-  color: #22c55e;
-}
-
-.td-price.sell {
-  color: #ef4444;
-}
-
-.td-qty {
-  color: #7aa2c8;
-}
-
-.td-value {
-  color: #a78bfa;
-  font-weight: 500;
-}
-
-/* Empty state */
-.no-matches {
+.empty-state {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 80px 20px;
-  gap: 8px;
+  gap: 0.5rem;
+  padding: 5rem 1rem;
 }
 
-.no-matches-icon {
-  font-size: 48px;
-  opacity: 0.3;
-}
-
-.no-matches-text {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 14px;
-  font-weight: 600;
-  color: #3a5a7a;
-  letter-spacing: 1px;
-}
-
-.no-matches-sub {
-  font-family: 'Inter', sans-serif;
-  font-size: 12px;
-  color: #2a4a6a;
-}
-
-/* Transition */
 .match-enter-active {
   transition: all 0.3s ease;
 }

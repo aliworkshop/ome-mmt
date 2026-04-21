@@ -1,49 +1,51 @@
 <template>
-  <div class="order-book">
-    <div class="ob-header">
-      <span class="ob-title">ORDER BOOK</span>
-      <span class="ob-symbol">BTC / USDT</span>
+  <div class="card bg-panel h-100 d-flex flex-column overflow-hidden">
+    <div class="panel-header">
+      <span class="micro-label text-info-emphasis">
+        <i class="bi bi-bookmark-fill me-1"></i>ORDER BOOK
+      </span>
+      <span class="mono small text-muted-2">BTC / USDT</span>
     </div>
 
-    <div class="ob-cols">
-      <span class="col-label">PRICE</span>
-      <span class="col-label right">SIZE</span>
-      <span class="col-label right">TOTAL</span>
+    <div class="col-head mono">
+      <span>PRICE</span>
+      <span class="text-end">SIZE</span>
+      <span class="text-end">TOTAL</span>
     </div>
 
-    <!-- Asks (sell side) — lowest first at bottom -->
-    <div class="asks-wrap">
+    <!-- Asks (lowest at bottom) -->
+    <div class="ob-half asks">
       <div
           v-for="row in asksSlice"
           :key="row.price"
           :style="{ '--depth': row.depthPct + '%' }"
-          class="ob-row ask"
+          class="ob-row ask mono"
       >
-        <span class="ob-price ask">{{ row.price.toFixed(2) }}</span>
-        <span class="ob-vol">{{ row.volume.toFixed(4) }}</span>
-        <span class="ob-total">{{ row.cumTotal.toFixed(4) }}</span>
+        <span class="text-sell fw-semibold">{{ row.price.toFixed(2) }}</span>
+        <span class="text-end">{{ row.volume.toFixed(4) }}</span>
+        <span class="text-end text-secondary">{{ row.cumTotal.toFixed(4) }}</span>
       </div>
     </div>
 
-    <!-- Spread -->
-    <div class="spread-bar">
-      <span class="spread-label">SPREAD</span>
-      <span class="spread-val">{{ store.spread }}</span>
-      <span class="mid-label">MID</span>
-      <span class="mid-val">{{ store.midPrice }}</span>
+    <!-- Spread bar -->
+    <div class="spread-bar mono">
+      <span class="micro-label">SPREAD</span>
+      <span class="text-gold fw-semibold small">{{ store.spread }}</span>
+      <span class="micro-label ms-auto">MID</span>
+      <span class="fw-bold">{{ store.midPrice }}</span>
     </div>
 
-    <!-- Bids (buy side) — highest first at top -->
-    <div class="bids-wrap">
+    <!-- Bids (highest at top) -->
+    <div class="ob-half bids">
       <div
           v-for="row in bidsSlice"
           :key="row.price"
           :style="{ '--depth': row.depthPct + '%' }"
-          class="ob-row bid"
+          class="ob-row bid mono"
       >
-        <span class="ob-price bid">{{ row.price.toFixed(2) }}</span>
-        <span class="ob-vol">{{ row.volume.toFixed(4) }}</span>
-        <span class="ob-total">{{ row.cumTotal.toFixed(4) }}</span>
+        <span class="text-buy fw-semibold">{{ row.price.toFixed(2) }}</span>
+        <span class="text-end">{{ row.volume.toFixed(4) }}</span>
+        <span class="text-end text-secondary">{{ row.cumTotal.toFixed(4) }}</span>
       </div>
     </div>
   </div>
@@ -70,149 +72,66 @@ const bidsSlice = computed(() => withDepth(store.bids.slice(0, 14)))
 </script>
 
 <style scoped>
-.order-book {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  background: #0c1220;
-  border: 1px solid #1a2a3a;
-  border-radius: 6px;
-  overflow: hidden;
-  font-family: 'JetBrains Mono', monospace;
-}
-
-.ob-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 12px 8px;
-  border-bottom: 1px solid #1a2a3a;
-}
-
-.ob-title {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 1.5px;
-  color: #7aa2c8;
-}
-
-.ob-symbol {
-  font-size: 11px;
-  color: #4a6a8a;
-  letter-spacing: 1px;
-}
-
-.ob-cols {
+.col-head {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
-  padding: 4px 10px;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.625rem;
+  font-weight: 600;
+  color: #3a5a7a;
+  letter-spacing: 0.1em;
   border-bottom: 1px solid #121e2c;
 }
 
-.col-label {
-  font-size: 9px;
-  font-weight: 600;
-  color: #3a5a7a;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-}
-
-.col-label.right {
-  text-align: right;
-}
-
-.asks-wrap,
-.bids-wrap {
+.ob-half {
   flex: 1;
   overflow: hidden;
   display: flex;
   flex-direction: column;
 }
 
-.asks-wrap {
+.ob-half.asks {
   justify-content: flex-end;
 }
 
 .ob-row {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
-  padding: 2px 10px;
+  padding: 2px 0.75rem;
+  font-size: 0.75rem;
   position: relative;
-  cursor: default;
   transition: background 0.1s;
 }
 
 .ob-row::before {
   content: '';
   position: absolute;
-  top: 0;
-  bottom: 0;
-  right: 0;
+  inset: 0 0 0 auto;
   width: var(--depth, 0%);
-  opacity: 0.12;
+  opacity: 0.14;
   pointer-events: none;
 }
 
 .ob-row.ask::before {
-  background: #ef4444;
+  background: var(--sell);
 }
 
 .ob-row.bid::before {
-  background: #22c55e;
+  background: var(--buy);
 }
 
 .ob-row:hover {
   background: rgba(255, 255, 255, 0.03);
 }
 
-.ob-price {
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.ob-price.ask {
-  color: #ef4444;
-}
-
-.ob-price.bid {
-  color: #22c55e;
-}
-
-.ob-vol,
-.ob-total {
-  font-size: 11px;
-  color: #7a9ab8;
-  text-align: right;
-}
-
 .spread-bar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
+  gap: 0.5rem;
+  padding: 0.375rem 0.75rem;
   background: #0f1a28;
   border-top: 1px solid #1a2a3a;
   border-bottom: 1px solid #1a2a3a;
-}
-
-.spread-label,
-.mid-label {
-  font-size: 9px;
-  font-weight: 600;
-  color: #3a5a7a;
-  letter-spacing: 1px;
-}
-
-.spread-val {
-  font-size: 11px;
-  color: #f59e0b;
-  font-weight: 600;
-  margin-right: 12px;
-}
-
-.mid-val {
-  font-size: 12px;
-  color: #e2e8f0;
-  font-weight: 700;
+  font-size: 0.75rem;
 }
 </style>
