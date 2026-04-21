@@ -32,7 +32,9 @@
       <span class="micro-label">SPREAD</span>
       <span class="text-gold fw-semibold small">{{ store.spread }}</span>
       <span class="micro-label ms-auto">MID</span>
-      <span class="fw-bold">{{ store.midPrice }}</span>
+      <span :class="{ 'text-gold': binance.connected.value }" class="fw-bold">
+        {{ midDisplay }}
+      </span>
     </div>
 
     <!-- Bids (highest at top) -->
@@ -54,8 +56,15 @@
 <script setup>
 import {computed} from 'vue'
 import {useTradingStore} from '../stores/trading.js'
+import {useBinancePrice} from '../composables/useBinancePrice.js'
 
 const store = useTradingStore()
+const binance = useBinancePrice()
+
+const midDisplay = computed(() => {
+  if (binance.price.value > 0) return binance.price.value.toFixed(2)
+  return store.midPrice || '—'
+})
 
 function withDepth(rows, reverse = false) {
   const maxVol = rows.reduce((m, r) => Math.max(m, r.volume), 0) || 1

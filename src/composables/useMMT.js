@@ -31,9 +31,13 @@ export function useMMT() {
         if (p > 0) userMidPrice.value = p
     })
 
+    // Always anchor new orders to the Binance reference price so the book
+    // tracks the external market. Fall back to the OME book mid only if
+    // Binance is disconnected.
     const effectiveMid = computed(() => {
+        if (userMidPrice.value > 0) return userMidPrice.value
         const liveMid = parseFloat(store.midPrice)
-        return liveMid > 0 ? liveMid : userMidPrice.value
+        return liveMid > 0 ? liveMid : 0
     })
 
     // Track orders placed by MMT: orderId -> {side, price, qty, placedAt}
@@ -72,6 +76,7 @@ export function useMMT() {
             side,
             price,
             quantity,
+            aggressive,
         }
     }
 
@@ -101,7 +106,18 @@ export function useMMT() {
             }
 
             // Remove from active if fully matched
-            if (resp.left === '0' || resp.left === '') {
+            const fullyFilled = resp.left === '0' || resp.left === ''
+            if (fullyFilled) {
+                mmtOrders.delete(order.id)
+                store.removeActiveOrder(order.id)
+            } else if (order.aggressive) {
+                // Aggressive orders cross the spread to take liquidity. Any
+                // unfilled remainder would rest on the wrong side of mid
+                // (inverted quote), so cancel it immediately.
+                try {
+                    await api.cancelOrder(order.id)
+                } catch { /* already gone */
+                }
                 mmtOrders.delete(order.id)
                 store.removeActiveOrder(order.id)
             }
@@ -123,9 +139,21 @@ export function useMMT() {
     async function cancelOld() {
         if (!autoCancel.value) return
         const cutoff = Date.now() - cancelAfterMs.value
+        const mid = effectiveMid.value
         const toCancel = []
         for (const [id, o] of mmtOrders.entries()) {
-            if (o.placedAt < cutoff) toCancel.push(id)
+            if (o.placedAt < cutoff) {
+                toCancel.push(id)
+                continue
+            }
+            // Sweep inverted quotes: a buy resting above mid or a sell
+            // resting below mid means the reference price has drifted past
+            // the order. Cancel so it does not cross the book the wrong way.
+            if (mid > 0) {
+                const p = parseFloat(o.price)
+                if (o.side === 'buy' && p > mid) toCancel.push(id)
+                else if (o.side === 'sell' && p < mid) toCancel.push(id)
+            }
         }
         await Promise.allSettled(
             toCancel.map(async (id) => {
