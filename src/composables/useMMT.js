@@ -104,7 +104,7 @@ export function useMMT() {
 
         if (myCompleted) {
             filledQty = parseFloat(myCompleted.quantity)
-            restedQty = 0
+            restedQty = placedQty - filledQty
         } else if (myPartial) {
             filledQty = parseFloat(myPartial.quantity)
             restedQty = placedQty - filledQty
