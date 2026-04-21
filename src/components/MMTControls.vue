@@ -148,8 +148,8 @@
           <span class="micro-label">CANCELLED</span>
         </div>
         <div class="mini-stat">
-          <span class="mono fw-bold text-purple">{{ fmtVolume(obVolume) }}</span>
-          <span class="micro-label">VOLUME</span>
+          <span class="mono fw-bold text-purple">{{ fmtUsdt(obVolume) }}</span>
+          <span class="micro-label">BOOK (USDT)</span>
         </div>
       </div>
     </div>
@@ -168,7 +168,7 @@ const flooding = ref(false)
 const priceClass = ref('')
 
 const obVolume = computed(() => {
-  const sum = (arr) => arr.reduce((s, o) => s + o.volume, 0)
+  const sum = (arr) => arr.reduce((s, o) => s + o.price * o.volume, 0)
   return sum(store.asks) + sum(store.bids)
 })
 
@@ -223,10 +223,12 @@ function handleReset() {
   mmt.resetAll()
 }
 
-function fmtVolume(v) {
+function fmtUsdt(v) {
+  if (!v) return '0'
+  if (v >= 1_000_000_000) return (v / 1_000_000_000).toFixed(2) + 'B'
   if (v >= 1_000_000) return (v / 1_000_000).toFixed(2) + 'M'
-  if (v >= 1_000) return (v / 1_000).toFixed(1) + 'K'
-  return v.toFixed(0)
+  if (v >= 1_000) return (v / 1_000).toFixed(2) + 'K'
+  return v.toFixed(2)
 }
 </script>
 

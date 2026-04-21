@@ -9,8 +9,8 @@
 
     <div class="col-head mono">
       <span>PRICE</span>
-      <span class="text-end">SIZE</span>
-      <span class="text-end">TOTAL</span>
+      <span class="text-end">SIZE (BTC)</span>
+      <span class="text-end">TOTAL (USDT)</span>
     </div>
 
     <!-- Asks (lowest at bottom) -->
@@ -22,8 +22,8 @@
           class="ob-row ask mono"
       >
         <span class="text-sell fw-semibold">{{ row.price.toFixed(2) }}</span>
-        <span class="text-end">{{ row.volume.toFixed(4) }}</span>
-        <span class="text-end text-secondary">{{ row.cumTotal.toFixed(4) }}</span>
+        <span class="text-end">{{ fmtSize(row.volume) }}</span>
+        <span class="text-end text-secondary">{{ fmtUsdt(row.cumTotal) }}</span>
       </div>
     </div>
 
@@ -44,8 +44,8 @@
           class="ob-row bid mono"
       >
         <span class="text-buy fw-semibold">{{ row.price.toFixed(2) }}</span>
-        <span class="text-end">{{ row.volume.toFixed(4) }}</span>
-        <span class="text-end text-secondary">{{ row.cumTotal.toFixed(4) }}</span>
+        <span class="text-end">{{ fmtSize(row.volume) }}</span>
+        <span class="text-end text-secondary">{{ fmtUsdt(row.cumTotal) }}</span>
       </div>
     </div>
   </div>
@@ -59,16 +59,29 @@ const store = useTradingStore()
 
 function withDepth(rows, reverse = false) {
   const maxVol = rows.reduce((m, r) => Math.max(m, r.volume), 0) || 1
-  let cum = 0
+  let cumNotional = 0
   const out = rows.map(r => {
-    cum += r.volume
-    return {...r, cumTotal: cum, depthPct: (r.volume / maxVol) * 100}
+    cumNotional += r.price * r.volume
+    return {...r, cumTotal: cumNotional, depthPct: (r.volume / maxVol) * 100}
   })
   return reverse ? out.slice().reverse() : out
 }
 
 const asksSlice = computed(() => withDepth(store.asks.slice(0, 14), true))
 const bidsSlice = computed(() => withDepth(store.bids.slice(0, 14)))
+
+function fmtSize(v) {
+  if (!v) return '0'
+  if (v >= 1) return v.toFixed(3)
+  return v.toFixed(4)
+}
+
+function fmtUsdt(v) {
+  if (!v) return '—'
+  if (v >= 1_000_000) return (v / 1_000_000).toFixed(2) + 'M'
+  if (v >= 1_000) return (v / 1_000).toFixed(2) + 'K'
+  return v.toFixed(2)
+}
 </script>
 
 <style scoped>
