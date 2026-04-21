@@ -6,6 +6,10 @@ export const useTradingStore = defineStore('trading', () => {
     // ─── Connection ─────────────────────────────────────────────────────────────
     const connected = ref(false)
     let eventSource = null
+    let lastEventAt = 0
+    let watchdogInterval = null
+    let reconnectTimer = null
+    const STALL_MS = 15000 // force reconnect if no SSE activity within this window
 
     // ─── Order Book ─────────────────────────────────────────────────────────────
     const rawAsks = ref({})
@@ -169,15 +173,37 @@ export const useTradingStore = defineStore('trading', () => {
     }
 
     // ─── SSE Connection ──────────────────────────────────────────────────────────
+    // Coalesced reconnect: any number of failure/stall signals converge into
+    // a single pending reconnect attempt.
+    function scheduleReconnect(delay = 3000) {
+        if (reconnectTimer) return
+        reconnectTimer = setTimeout(() => {
+            reconnectTimer = null
+            connectSSE()
+        }, delay)
+    }
+
     function connectSSE() {
+        if (reconnectTimer) {
+            clearTimeout(reconnectTimer)
+            reconnectTimer = null
+        }
+        if (watchdogInterval) {
+            clearInterval(watchdogInterval)
+            watchdogInterval = null
+        }
         if (eventSource) eventSource.close()
+
         eventSource = new EventSource('/api/stream')
+        lastEventAt = Date.now()
 
         eventSource.addEventListener('connected', () => {
             connected.value = true
+            lastEventAt = Date.now()
         })
 
         eventSource.addEventListener('update', (e) => {
+            lastEventAt = Date.now()
             try {
                 const data = JSON.parse(e.data)
                 if (data.orderbook) {
@@ -192,11 +218,29 @@ export const useTradingStore = defineStore('trading', () => {
 
         eventSource.onerror = () => {
             connected.value = false
-            setTimeout(connectSSE, 3000)
+            scheduleReconnect()
         }
+
+        // Browsers and proxies can leave the stream half-open without firing
+        // onerror — the readyState stays OPEN but no data arrives. Poll for
+        // inactivity and force a reconnect when we cross the stall threshold.
+        watchdogInterval = setInterval(() => {
+            if (Date.now() - lastEventAt > STALL_MS) {
+                connected.value = false
+                scheduleReconnect(0)
+            }
+        }, 3000)
     }
 
     function disconnectSSE() {
+        if (reconnectTimer) {
+            clearTimeout(reconnectTimer)
+            reconnectTimer = null
+        }
+        if (watchdogInterval) {
+            clearInterval(watchdogInterval)
+            watchdogInterval = null
+        }
         if (eventSource) {
             eventSource.close()
             eventSource = null
