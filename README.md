@@ -1,6 +1,6 @@
-# CPG OME MMT UI
+# OME MMT UI
 
-A browser-based market-making terminal for the **CPG Order Matching Engine (OME)**. It automates high-frequency limit
+A browser-based market-making terminal for the **Order Matching Engine (OME)**. It automates high-frequency limit
 order placement on the BTC/USDT pair and visualizes order book state and trade matches in real time.
 
 ## Overview
@@ -37,11 +37,11 @@ Order book depth and matched trades are streamed to the UI over **SSE** from the
 - [Vue 3](https://vuejs.org/) + [Pinia](https://pinia.vuejs.org/) — UI and state management
 - [Vite](https://vitejs.dev/) — dev server and build tool
 - Binance WebSocket API (`wss://stream.binance.com`) — live BTC/USDT price feed
-- CPG OME HTTP Gateway — REST + SSE interface to the matching engine (gRPC proxy, runs on `:8080`)
+- OME HTTP Gateway — REST + SSE interface to the matching engine (gRPC proxy, runs on `:8080`)
 
 ## Getting Started
 
-**Prerequisites:** Node.js 18+, and the CPG OME HTTP gateway running on `localhost:8080`.
+**Prerequisites:** Node.js 18+, and the OME HTTP gateway running on `localhost:8080`.
 
 ```bash
 # Install dependencies and start the dev server
@@ -71,5 +71,5 @@ Browser
                           OME HTTP Gateway (:8080)
                                       │  gRPC
                                       ▼
-                          CPG Order Matching Engine (:8025)
+                          Order Matching Engine (:8025)
 ```
