@@ -101,13 +101,16 @@ export const useTradingStore = defineStore('trading', () => {
     //
     // OME code 903 ("order does not exist") means the order was already gone
     // on their side (cancelled earlier, or filled between our snapshot and
-    // the cancel request). Ignore the error and drop it from the map.
+    // the cancel request). Ignore the error, drop it from the map, and
+    // still count it as a cancel so the UI total matches what we tried to
+    // cancel — otherwise cancel-all leaves `cancelled` < `placed`.
     async function cancelActiveOrder(id) {
         try {
             await api.cancelOrder(id)
         } catch (e) {
             if (parseOmeError(e)?.code === 903) {
                 removeActiveOrder(id)
+                stats.cancelled++
                 return true
             }
             return false
