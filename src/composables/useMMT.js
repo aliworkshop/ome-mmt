@@ -24,6 +24,7 @@ export function useMMT() {
     const autoCancel = ref(true)  // auto-cancel old orders
     const cancelAfterMs = ref(20000) // cancel orders older than N ms
     const aggressionPct = ref(20) // 0 = fully passive, 100 = all at inner edge
+    const maxPerSide = 20         // cap resting orders per side; older get cancelled
 
     // Mid is driven directly by the live Binance price. The OME book mid is
     // only a fallback when Binance is disconnected — otherwise every batch
@@ -33,9 +34,6 @@ export function useMMT() {
         const liveMid = parseFloat(store.midPrice)
         return liveMid > 0 ? liveMid : 0
     })
-
-    // Track orders placed by MMT: orderId -> {side, price, qty, placedAt}
-    const mmtOrders = new Map()
 
     let tickInterval = null
     let cancelInterval = null
@@ -76,48 +74,75 @@ export function useMMT() {
     }
 
     async function placeSingle(order) {
+        let resp
         try {
-            const resp = await api.placeLimitOrder({
+            resp = await api.placeLimitOrder({
                 order_id: order.id,
                 user_id: order.userId,
                 side: order.side,
                 quantity: order.quantity,
                 price: order.price,
             })
-            mmtOrders.set(order.id, {...order, placedAt: Date.now()})
-            store.addActiveOrder(order)
-
-            // Build one taker entry from the placed order's perspective
-            const filledQty = (resp.completed ?? []).reduce((s, m) => s + parseFloat(m.quantity || 0), 0)
-                + parseFloat(resp.partial?.quantity || 0)
-            if (filledQty > 0) {
-                store.addMatched([{
-                    order_id: order.id,
-                    side: order.side,
-                    price: order.price,
-                    quantity: filledQty.toFixed(4),
-                    matched_at: Date.now(),
-                }])
-            }
-
-            // Remove from active if fully matched
-            const fullyFilled = resp.left === '0' || resp.left === ''
-            if (fullyFilled) {
-                mmtOrders.delete(order.id)
-                store.removeActiveOrder(order.id)
-            } else if (order.aggressive) {
-                // Aggressive orders cross the spread to take liquidity. Any
-                // unfilled remainder would rest on the wrong side of mid
-                // (inverted quote), so cancel it immediately.
-                try {
-                    await api.cancelOrder(order.id)
-                } catch { /* already gone */
-                }
-                mmtOrders.delete(order.id)
-                store.removeActiveOrder(order.id)
-            }
         } catch {
-            // order rejected or network error — ignore
+            return // order rejected or network error
+        }
+        store.stats.placed++
+
+        // OME response semantics:
+        //   • completed === [] && partial === null → order rested fully, no match
+        //   • order_id in completed → that order is fully done (removed from book)
+        //   • partial.order_id present → that order is partially done; its new
+        //     resting quantity is partial.quantity
+        const completedList = resp.completed ?? []
+        const partial = resp.partial ?? null
+
+        // Anything in `completed` is fully done — drop each from the active
+        // list. Covers our own id (if our order filled fully) and any resting
+        // maker orders we consumed that were still tracked here.
+        for (const m of completedList) {
+            store.removeActiveOrder(m.order_id)
+        }
+
+        // Any matches against other orders on the book — record those as taker
+        // trades from our order's perspective.
+        const placedQty = parseFloat(order.quantity)
+        const myCompleted = completedList.find(m => m.order_id === order.id)
+        const myPartial = partial && partial.order_id === order.id ? partial : null
+
+        let filledQty = 0
+        let restedQty = placedQty
+
+        if (myCompleted) {
+            // Our order is fully done — nothing rests.
+            filledQty = placedQty
+            restedQty = 0
+        } else if (myPartial) {
+            // Our order is partially done — remaining rest size is in partial.
+            restedQty = parseFloat(myPartial.quantity)
+            filledQty = placedQty - restedQty
+        }
+        // else: completed may list other orders that got fully consumed by ours;
+        // treat our remainder as whatever isn't accounted for.
+
+        if (filledQty > 1e-8) {
+            store.addMatched([{
+                order_id: order.id,
+                side: order.side,
+                price: order.price,
+                quantity: filledQty.toFixed(4),
+                matched_at: Date.now(),
+            }])
+        }
+
+        if (restedQty <= 1e-8) return // fully filled
+
+        store.addActiveOrder({...order, quantity: restedQty.toFixed(4)})
+
+        if (order.aggressive) {
+            // Aggressive remainder would rest on the wrong side of mid
+            // (inverted quote). Cancel it and wait for OME success before
+            // untracking — so it never lingers in the book silently.
+            await store.cancelActiveOrder(order.id)
         }
     }
 
@@ -130,28 +155,27 @@ export function useMMT() {
 
         // Fire all concurrently
         await Promise.allSettled(all.map(placeSingle))
+        await trimSides()
+    }
+
+    // Keep at most `maxPerSide` resting orders per side. activeOrders is
+    // newest-first (unshift), so .slice(maxPerSide) picks up the oldest tail
+    // on that side for cancellation.
+    async function trimSides() {
+        const buys = store.activeOrders.filter(o => o.side === 'buy')
+        const sells = store.activeOrders.filter(o => o.side === 'sell')
+        const excess = [...buys.slice(maxPerSide), ...sells.slice(maxPerSide)]
+        if (!excess.length) return
+        await Promise.allSettled(excess.map(o => store.cancelActiveOrder(o.id)))
     }
 
     async function cancelOld() {
         if (!autoCancel.value) return
         const cutoff = Date.now() - cancelAfterMs.value
-        const toCancel = []
-        for (const [id, o] of mmtOrders.entries()) {
-            if (o.placedAt < cutoff) toCancel.push(id)
-        }
-        await Promise.allSettled(
-            toCancel.map(async (id) => {
-                try {
-                    await api.cancelOrder(id)
-                    mmtOrders.delete(id)
-                    store.removeActiveOrder(id)
-                } catch {
-                    // already matched or gone
-                    mmtOrders.delete(id)
-                    store.removeActiveOrder(id)
-                }
-            })
-        )
+        const toCancel = store.activeOrders
+            .filter(o => o.placedAt < cutoff)
+            .map(o => o.id)
+        await Promise.allSettled(toCancel.map(id => store.cancelActiveOrder(id)))
     }
 
     function applySpeed() {
@@ -185,18 +209,8 @@ export function useMMT() {
             cancelInterval = null
         }
 
-        // Cancel every tracked order then wipe the book
-        const ids = [...mmtOrders.keys()]
-        await Promise.allSettled(
-            ids.map(async (id) => {
-                try {
-                    await api.cancelOrder(id)
-                } catch { /* already matched or gone */
-                }
-                mmtOrders.delete(id)
-                store.removeActiveOrder(id)
-            })
-        )
+        // Cancel every tracked order (awaits OME success) then wipe the book
+        await store.cancelAllActive()
         try {
             await api.resetOrderBook()
             await api.startOrderBook()
@@ -212,25 +226,15 @@ export function useMMT() {
         ].filter(Boolean)
         if (!orders.length) return
         await Promise.allSettled(orders.map(placeSingle))
+        await trimSides()
     }
 
     async function cancelAll() {
-        const ids = [...mmtOrders.keys()]
-        await Promise.allSettled(
-            ids.map(async (id) => {
-                try {
-                    await api.cancelOrder(id)
-                } catch { /* ignore */
-                }
-                mmtOrders.delete(id)
-                store.removeActiveOrder(id)
-            })
-        )
+        await store.cancelAllActive()
     }
 
     async function resetAll() {
-        stop()
-        mmtOrders.clear()
+        await stop()
         store.clearActiveOrders()
         store.resetStats()
         try {

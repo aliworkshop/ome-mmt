@@ -32,10 +32,11 @@
           <span class="small text-light">{{ order.price }}</span>
           <span class="small text-end text-info-emphasis">{{ order.quantity }}</span>
           <span class="small text-end text-secondary">{{ age(order.placedAt) }}</span>
-          <button class="btn btn-sm btn-link p-0 text-secondary cancel-btn"
+          <button :disabled="cancelling.has(order.id)"
+                  class="btn btn-sm btn-link p-0 text-secondary cancel-btn"
                   title="Cancel"
                   @click="cancel(order.id)">
-            <i class="bi bi-x-lg"></i>
+            <i :class="cancelling.has(order.id) ? 'bi bi-hourglass-split' : 'bi bi-x-lg'"></i>
           </button>
         </div>
       </TransitionGroup>
@@ -49,7 +50,6 @@
 
 <script setup>
 import {ref, onMounted, onUnmounted} from 'vue'
-import {api} from '../api/client.js'
 import {useTradingStore} from '../stores/trading.js'
 
 defineProps({
@@ -57,14 +57,13 @@ defineProps({
 })
 
 const store = useTradingStore()
+const cancelling = ref(new Set())
 
 async function cancel(id) {
-  try {
-    await api.cancelOrder(id)
-    store.removeActiveOrder(id)
-  } catch {
-    store.removeActiveOrder(id)
-  }
+  if (cancelling.value.has(id)) return
+  cancelling.value.add(id)
+  await store.cancelActiveOrder(id)
+  cancelling.value.delete(id)
 }
 
 function age(ts) {

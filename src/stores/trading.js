@@ -1,5 +1,6 @@
 import {defineStore} from 'pinia'
 import {ref, reactive, computed} from 'vue'
+import {api} from '../api/client.js'
 
 export const useTradingStore = defineStore('trading', () => {
     // ─── Connection ─────────────────────────────────────────────────────────────
@@ -45,7 +46,6 @@ export const useTradingStore = defineStore('trading', () => {
     function addActiveOrder(order) {
         if (activeOrderIds.has(order.id)) return
         activeOrderIds.add(order.id)
-        stats.placed++
         activeOrders.value.unshift({
             id: order.id,
             side: order.side,
@@ -69,13 +69,53 @@ export const useTradingStore = defineStore('trading', () => {
         if (idx !== -1) {
             activeOrders.value.splice(idx, 1)
             activeOrderIds.delete(id)
-            stats.cancelled++
         }
     }
 
     function clearActiveOrders() {
         activeOrders.value = []
         activeOrderIds.clear()
+    }
+
+    // Pull the embedded JSON payload out of an OME gRPC error message like:
+    //   rpc error: code = InvalidArgument desc = {"message":"...","code":903}
+    // Returns the parsed object, or null if it doesn't look like one.
+    function parseOmeError(err) {
+        const msg = err?.message ?? ''
+        const start = msg.indexOf('{')
+        if (start === -1) return null
+        try {
+            return JSON.parse(msg.slice(start))
+        } catch {
+            return null
+        }
+    }
+
+    // Cancel an order on the OME and only remove it from local tracking once
+    // the cancel has succeeded. On failure the order stays in the list so the
+    // UI continues to reflect what is actually resting on the book.
+    //
+    // OME code 903 ("order does not exist") means the order was already gone
+    // on their side (cancelled earlier, or filled between our snapshot and
+    // the cancel request). Ignore the error and drop it from the map.
+    async function cancelActiveOrder(id) {
+        try {
+            await api.cancelOrder(id)
+        } catch (e) {
+            if (parseOmeError(e)?.code === 903) {
+                removeActiveOrder(id)
+                return true
+            }
+            return false
+        }
+        removeActiveOrder(id)
+        stats.cancelled++
+        return true
+    }
+
+    async function cancelAllActive() {
+        const ids = activeOrders.value.map(o => o.id)
+        await Promise.allSettled(ids.map(cancelActiveOrder))
     }
 
     // ─── Matched Orders ──────────────────────────────────────────────────────────
@@ -168,6 +208,7 @@ export const useTradingStore = defineStore('trading', () => {
         connected,
         rawAsks, rawBids, asks, bids, spread, midPrice,
         activeOrders, addActiveOrder, removeActiveOrder, clearActiveOrders,
+        cancelActiveOrder, cancelAllActive,
         matchedOrders, addMatched,
         stats, resetStats,
         connectSSE, disconnectSSE,
